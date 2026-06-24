@@ -1,36 +1,57 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
+# Build
+/dist
 /build
 
-# misc
-.DS_Store
-*.pem
+# Dependencies
+/node_modules
 
-# debug
+# Prisma
+/generated/prisma
+prisma/dev.db
+prisma/dev.db-journal
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
+pnpm-debug.log*
 
-# local env files
-.env*.local
-.env
+# Coverage
+/coverage
+/.nyc_output
 
-# vercel
-.vercel
+# Runtime
+pids
+*.pid
+*.seed
+*.pid.lock
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Cache
+.cache
+.eslintcache
+.tsbuildinfo
+
+# Docker
+.docker
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Temp
+.temp
+.tmp
