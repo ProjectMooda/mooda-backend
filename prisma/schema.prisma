@@ -1,0 +1,133 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  KAKAO
+  NAVER
+}
+
+enum CreationMode {
+  PERIOD
+  WEEKLY
+  MULTIPLE
+  SINGLE
+}
+
+enum ScheduleType {
+  TASK
+  EVENT
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  name            String?
+  provider        AuthProvider     @default(LOCAL)
+  providerId      String?
+  
+  schedules       Schedule[]
+  goals           Goal[]
+  milestones      Milestone[]
+  categories      Category[]
+  priorityOptions PriorityOption[]
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([provider, providerId])
+}
+
+model Schedule {
+  id             String        @id @default(uuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  groupId        String?       
+  creationMode   CreationMode  @default(SINGLE)
+  type           ScheduleType  @default(TASK)
+  
+  goalId         String?
+  goal           Goal?         @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  milestoneId    String?
+  milestone      Milestone?    @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  
+  summary        String
+  done           Boolean       @default(false)
+  startDate      DateTime      @db.Date
+  endDate        DateTime?     @db.Date
+  startTime      String?
+  endTime        String?
+  
+  categoryId     String?
+  priorityId     String?
+  
+  isPinned       Boolean       @default(false)
+  orderIndex     Int           @default(0)
+  isRecurring    Boolean       @default(false)
+  repeatWeekdays String[]      
+  
+  subtasks       Subtask[]
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Subtask {
+  id         String   @id @default(uuid())
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  text       String
+  done       Boolean  @default(false)
+}
+
+model Goal {
+  id         String      @id @default(uuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  startDate  DateTime    @db.Date
+  endDate    DateTime?   @db.Date
+  color      String      @default("#ef4444")
+  isArchived Boolean     @default(false)
+  
+  milestones Milestone[]
+  schedules  Schedule[]
+}
+
+model Milestone {
+  id         String     @id @default(uuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId     String
+  goal       Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  title      String
+  startDate  DateTime   @db.Date
+  endDate    DateTime?  @db.Date
+  done       Boolean    @default(false)
+  
+  schedules  Schedule[]
+}
+
+model Category {
+  id     String @id 
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label  String
+  emoji  String
+}
+
+model PriorityOption {
+  id     String @id 
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label  String
+  emoji  String
+  color  String
+}

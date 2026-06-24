@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: schedule_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: schedule_db
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: schedule_redis
+    ports:
+      - '6379:6379'
+
+volumes:
+  postgres_data:
