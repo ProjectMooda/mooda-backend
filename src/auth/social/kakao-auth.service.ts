@@ -3,6 +3,7 @@ import {
   ISocialAuthService,
   SocialUserInfo,
 } from './interfaces/social-auth.interface';
+import { AuthProvider } from '../enums/provider.enum';
 
 // 💡 카카오 응답 규격에 profile.nickname 추가
 interface KakaoUserInfo {
@@ -41,7 +42,7 @@ export class KakaoAuthService implements ISocialAuthService {
         providerId: kakaoUser.id.toString(),
         email: email,
         name: name, // 👈 이름 매핑
-        provider: 'KAKAO',
+        provider: AuthProvider.KAKAO,
       };
     } catch {
       throw new UnauthorizedException('유효하지 않은 카카오 토큰입니다.');

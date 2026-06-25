@@ -1,4 +1,3 @@
-// src/auth/auth.controller.ts
 import {
   Controller,
   Post,
@@ -6,56 +5,68 @@ import {
   Param,
   UseGuards,
   Req,
+  Res,
   BadRequestException,
 } from '@nestjs/common';
+import type { CookieOptions, Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { SocialLoginDto } from './dto/social-login.dto';
 import { AuthProvider } from './enums/provider.enum';
-import { GoogleAuthService } from './social/google-auth.service';
-import { KakaoAuthService } from './social/kakao-auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly googleAuth: GoogleAuthService,
-    private readonly kakaoAuth: KakaoAuthService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
-  // 🚀 통합된 소셜 로그인 엔드포인트
+  // 쿠키 옵션을 한 곳에서 관리 — 14일 TTL 변경 시 여기만 수정
+  private get refreshCookieOptions(): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 14 * 24 * 60 * 60 * 1000,
+    };
+  }
+
   @Post('login/:provider')
   async socialLogin(
     @Param('provider') provider: AuthProvider,
     @Body() dto: SocialLoginDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    let userInfo;
+    const { accessToken, refreshToken, user } =
+      await this.authService.socialLogin(provider, dto.accessToken);
 
-    // Factory 역할을 컨트롤러에서 간단히 처리하거나, 별도 Factory 클래스로 뺄 수도 있습니다.
-    switch (provider) {
-      case AuthProvider.GOOGLE:
-        userInfo = await this.googleAuth.getUserInfo(dto.accessToken);
-        break;
-      case AuthProvider.KAKAO:
-        userInfo = await this.kakaoAuth.getUserInfo(dto.accessToken);
-        break;
-      default:
-        throw new BadRequestException('지원하지 않는 로그인 방식입니다.');
-    }
-
-    return this.authService.loginOrRegister(userInfo);
+    res.cookie('refreshToken', refreshToken, this.refreshCookieOptions);
+    return { accessToken, user };
   }
 
   @Post('refresh')
-  async refresh(@Body('refreshToken') refreshToken: string) {
-    return await this.authService.refresh(refreshToken);
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // 쿠키 객체의 타입을 명시적으로 지정
+    const cookies = req.cookies as Record<string, string>;
+    const oldRefreshToken = cookies['refreshToken'];
+    if (!oldRefreshToken)
+      throw new BadRequestException('리프레시 토큰이 없습니다.');
+
+    const { accessToken, newRefreshToken } =
+      await this.authService.refresh(oldRefreshToken);
+
+    res.cookie('refreshToken', newRefreshToken, this.refreshCookieOptions);
+    return { accessToken };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  // 1. req의 타입을 명시적으로 지정
-  async logout(@Req() req: Request & { user: { id: string } }) {
-    // 2. 이제 req.user.id가 string임을 TS가 알게 됩니다.
-    return await this.authService.logout(req.user.id);
+  async logout(
+    @Req() req: Request & { user: { id: string } },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.logout(req.user.id);
+    res.clearCookie('refreshToken', this.refreshCookieOptions);
+    return { message: '로그아웃 성공' };
   }
 }

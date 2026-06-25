@@ -3,7 +3,7 @@ import {
   ISocialAuthService,
   SocialUserInfo,
 } from './interfaces/social-auth.interface';
-
+import { AuthProvider } from '../enums/provider.enum';
 interface GoogleUserResponse {
   sub: string;
   email: string;
@@ -36,7 +36,7 @@ export class GoogleAuthService implements ISocialAuthService {
         providerId: googleUser.sub, // 구글의 고유 식별자
         name: googleUser.name || '구글유저',
         email: googleUser.email,
-        provider: 'GOOGLE',
+        provider: AuthProvider.GOOGLE,
       };
     } catch (error) {
       console.error('구글 로그인 에러:', error);
