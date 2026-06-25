@@ -2,12 +2,17 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
 import { SyncModule } from './sync/sync.module';
 import { AuthModule } from './auth/auth.module';
+import { RedisModule } from '@nestjs-modules/ioredis';
 
 @Module({
   imports: [
     PrismaModule,
     SyncModule,
-    AuthModule, // 👈 여기 배열 안에 꼭 들어가야 합니다!
+    AuthModule,
+    RedisModule.forRoot({
+      type: 'single',
+      url: 'redis://localhost:6379',
+    }),
   ],
   controllers: [],
   providers: [],

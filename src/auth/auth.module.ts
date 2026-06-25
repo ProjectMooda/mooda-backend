@@ -1,17 +1,22 @@
+// src/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
-
+import { PassportModule } from '@nestjs/passport';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleAuthService } from './social/google-auth.service';
+import { KakaoAuthService } from './social/kakao-auth.service';
 @Module({
-  // 💡 여기서 JwtModule을 세팅해줘야 AuthService에서 에러 없이 토큰을 구울 수 있어!
   imports: [
+    // passport 기본 세팅 추가
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      // 비밀키는 .env에서 가져오고, 없으면 임시 키 사용
-      secret: process.env.JWT_SECRET || 'my-super-secret-access-key-change-me-later',
+      secret: process.env.JWT_SECRET,
     }),
   ],
-  providers: [AuthService],
+  providers: [AuthService, JwtStrategy, GoogleAuthService, KakaoAuthService], // 💡 JwtStrategy 공급자 등록!
   controllers: [AuthController],
+  exports: [JwtStrategy, PassportModule], // 💡 다른 모듈에서 가드를 쓸 수 있게 수출하기
 })
 export class AuthModule {}

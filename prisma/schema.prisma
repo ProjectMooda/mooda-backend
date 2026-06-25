@@ -24,7 +24,7 @@ enum ScheduleType {
   TASK
   EVENT
 }
-
+// 유저 정보
 model User {
   id              String           @id @default(uuid())
   email           String           @unique
