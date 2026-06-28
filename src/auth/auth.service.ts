@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GoogleAuthService } from './social/google-auth.service';
 import { KakaoAuthService } from './social/kakao-auth.service';
 import { AuthProvider } from './enums/provider.enum';
+import { AuthProvider as PrismaAuthProvider } from '@prisma/client';
 import {
   ISocialAuthService,
   SocialUserInfo,
@@ -40,6 +41,20 @@ export class AuthService {
     return service;
   }
 
+  /** 서버사이드 OAuth — Authorization Code로 로그인 */
+  async socialLoginWithCode(provider: AuthProvider, code: string) {
+    const service = this.getSocialService(provider);
+
+    if (!service.exchangeCode) {
+      throw new UnauthorizedException(
+        `${provider}는 서버사이드 코드 교환을 지원하지 않습니다.`,
+      );
+    }
+
+    const userInfo = await service.exchangeCode(code);
+    return this.loginOrRegister(userInfo);
+  }
+
   private hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
@@ -49,7 +64,7 @@ export class AuthService {
     return {
       accessToken: this.jwtService.sign(payload, {
         secret: process.env.JWT_SECRET,
-        expiresIn: '1h',
+        expiresIn: '10s',
       }),
       refreshToken: this.jwtService.sign(payload, {
         secret: process.env.JWT_REFRESH_SECRET,
@@ -82,8 +97,12 @@ export class AuthService {
 
   /** DB upsert 후 토큰 발급 */
   private async loginOrRegister(userInfo: SocialUserInfo) {
+    // 계정 판별식 -> 이메일과 provider(social 정보)로 같은 계정인지 구분
     let user = await this.prisma.user.findFirst({
-      where: { email: userInfo.email },
+      where: {
+        email: userInfo.email,
+        provider: userInfo.provider.toUpperCase() as PrismaAuthProvider,
+      },
     });
 
     if (!user) {
@@ -91,8 +110,7 @@ export class AuthService {
         data: {
           id: userInfo.providerId,
           email: userInfo.email,
-          provider:
-            userInfo.provider as unknown as import('@prisma/client').AuthProvider,
+          provider: userInfo.provider.toUpperCase() as PrismaAuthProvider,
         },
       });
     }
@@ -151,5 +169,40 @@ export class AuthService {
 
   async logout(userId: string): Promise<void> {
     await this.redis.del(`refreshToken:${userId}`);
+  }
+
+  /**프로필 데이터 조합 로직
+   * 프론트엔드가 할 일을 백엔드가 대신 처리해서 완제품을 줍니다.
+   */
+  async getProfile(userId: string) {
+    // 1. DB에서 해당 유저 찾기
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        provider: true,
+      },
+    });
+
+    // 2. 유저가 없으면 에러 (토큰은 있는데 DB에서 삭제된 유저일 경우 등)
+    if (!user) {
+      throw new UnauthorizedException('존재하지 않는 유저입니다.');
+    }
+
+    // 3. 프론트엔드에서 보여주기 좋게 데이터 가공 (Fallback 로직)
+    // 💡 나중에 DB에 nickname 컬럼을 추가하면 user.nickname을 우선적으로 쓰면 됩니다.
+    const nickname = user.email.split('@')[0];
+    const avatarText = user.email.charAt(0).toUpperCase();
+
+    // 4. 완제품 JSON 리턴
+    return {
+      id: user.id,
+      email: user.email,
+      provider: user.provider,
+      nickname, // 프론트에서 닉네임으로 사용
+      avatarText, // 프론트에서 동그란 프로필 사진 텍스트로 사용
+      subscription: 'free', // 향후 결제 시스템 연동 시 활용할 플랜 정보
+    };
   }
 }

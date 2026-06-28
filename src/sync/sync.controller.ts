@@ -1,9 +1,12 @@
-// src/sync/sync.controller.ts
 import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
-import { SyncService } from './sync.service';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-// Request 타입을 확장하거나 임시 인터페이스 정의 (req.user 타입 에러 방어)
-interface AuthenticatedRequest extends Request {
+import { SyncRequestDto } from './dto/sync.dto';
+import { Request } from 'express';
+
+// 이거 jwt requset 머할지 전역 파일 하나 필요할 듯
+interface JwtRequest extends Request {
   user: {
     id: string;
     email: string;
@@ -11,22 +14,31 @@ interface AuthenticatedRequest extends Request {
 }
 
 @Controller('sync')
+@UseGuards(JwtAuthGuard)
 export class SyncController {
-  constructor(private readonly syncService: SyncService) {}
+  constructor(@InjectQueue('sync-queue') private readonly syncQueue: Queue) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard) // 🔒 이제 이 API는 로그인 안 하면 절대 못 들어옴!
-  async syncData(
-    @Req() req: AuthenticatedRequest, // 💡 토큰 검증이 완료된 유저 정보가 여기 들어있음
-    @Body() payload: any,
-  ) {
-    console.log(
-      '🔥 멈춰! 가드 통과 후 컨트롤러 실행됨! 유저 ID:',
-      req.user?.id,
-    );
-    // 💡 기존에 프론트가 던져주던 가짜 userId 대신, 토큰에서 인증된 진짜 유저 ID 주입!
+  async syncData(@Req() req: JwtRequest, @Body() dto: SyncRequestDto) {
     const userId = req.user.id;
 
-    return this.syncService.processSync(userId, payload);
+    if (!dto.jobs || dto.jobs.length === 0) {
+      return { success: true, processed: 0 };
+    }
+
+    // Redis 백그라운드 큐에 유저 ID와 작업 목록 적재
+    await this.syncQueue.add(
+      'process-user-sync',
+      {
+        userId,
+        jobs: dto.jobs,
+      },
+      {
+        attempts: 3, // 실패 시 최대 3번 재시도
+        backoff: 5000, // 실패 시 5초 대기 후 재시도
+      },
+    );
+
+    return { success: true, message: 'Sync jobs successfully queued' };
   }
 }

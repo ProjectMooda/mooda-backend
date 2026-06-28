@@ -1,11 +1,20 @@
 import { Module } from '@nestjs/common';
-import { SyncService } from './sync.service';
+import { SyncProcessor } from './sync.processor';
 import { SyncController } from './sync.controller';
 import { AuthModule } from '../auth/auth.module';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
-  imports: [AuthModule],
+  imports: [
+    AuthModule,
+
+    BullModule.registerQueue({
+      name: 'sync-queue',
+    }),
+  ],
+
   controllers: [SyncController],
-  providers: [SyncService],
+
+  providers: [SyncProcessor],
 })
 export class SyncModule {}
