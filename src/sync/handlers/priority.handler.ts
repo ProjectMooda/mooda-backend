@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PriorityOption } from '@prisma/client';
+import type { PriorityOption } from '@prisma/client'; // ✅ Prisma 타입 임포트
 import type { SyncJobDto } from '../dto/sync.dto';
 import type { ISyncHandler, PrismaTx } from '../interfaces/sync.interface';
 
@@ -10,31 +10,36 @@ export class PriorityHandler implements ISyncHandler {
     userId: string,
     syncJob: SyncJobDto,
   ): Promise<void> {
-    const { targetId, action, payload, timestamp } = syncJob;
-    const jobDate = new Date(timestamp);
+    const { targetId, action, payload } = syncJob;
 
-    const current = await tx.priorityOption.findUnique({
-      where: { id: targetId },
-    });
+    // ✅ Prisma 타입 활용
+    const data = (payload || {}) as Partial<PriorityOption>;
 
-    if (action === 'CREATE' || action === 'UPDATE') {
-      if (!current || jobDate > current.clientUpdatedAt) {
-        const data = payload as Partial<PriorityOption>;
-        const mapped = {
-          label: data.label || '',
-          emoji: data.emoji || '',
-          color: data.color || '',
-        };
-        await tx.priorityOption.upsert({
-          where: { id: targetId },
-          create: { id: targetId, userId, ...mapped, clientUpdatedAt: jobDate },
-          update: { ...mapped, clientUpdatedAt: jobDate },
+    if (action === 'CREATE') {
+      const exists = await tx.priorityOption.findUnique({
+        where: { id: targetId },
+      });
+      if (!exists) {
+        await tx.priorityOption.create({
+          data: {
+            id: targetId,
+            userId,
+            label: data.label || '',
+            emoji: data.emoji || '',
+            color: data.color || '',
+          },
         });
       }
+    } else if (action === 'UPDATE') {
+      await tx.priorityOption.updateMany({
+        where: { id: targetId, userId },
+        data: { label: data.label, emoji: data.emoji, color: data.color },
+      });
     } else if (action === 'DELETE') {
-      if (current && jobDate > current.clientUpdatedAt) {
-        await tx.priorityOption.delete({ where: { id: targetId } });
-      }
+      await tx.priorityOption.updateMany({
+        where: { id: targetId, userId },
+        data: { deletedAt: new Date() },
+      });
     }
   }
 }

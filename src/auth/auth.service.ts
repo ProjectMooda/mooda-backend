@@ -106,12 +106,88 @@ export class AuthService {
     });
 
     if (!user) {
-      user = await this.prisma.user.create({
-        data: {
-          id: userInfo.providerId,
-          email: userInfo.email,
-          provider: userInfo.provider.toUpperCase() as PrismaAuthProvider,
-        },
+      // 🌟 신규 회원가입: 유저 생성 + 기본 카테고리 + 기본 중요도를 하나의 트랜잭션으로 묶어서 처리
+      user = await this.prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            id: userInfo.providerId,
+            email: userInfo.email,
+            provider: userInfo.provider.toUpperCase() as PrismaAuthProvider,
+          },
+        });
+        const now = new Date();
+
+        // 1. 프론트엔드와 동일한 기본 카테고리 세팅
+        await tx.category.createMany({
+          data: [
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '기획',
+              emoji: '💡',
+            },
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '디자인',
+              emoji: '🎨',
+            },
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '개발',
+              emoji: '💻',
+            },
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '마케팅',
+              emoji: '🚀',
+            },
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '개인일정',
+              emoji: '🏃',
+            },
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '기타',
+              emoji: '📌',
+            },
+          ],
+        });
+
+        // 2. 프론트엔드와 동일한 기본 중요도 세팅
+        // (주의: Prisma 스키마의 모델명이 priority인 경우 tx.priority 사용)
+        await tx.priorityOption.createMany({
+          data: [
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '높음',
+              emoji: '🔥',
+              color: '#fee2e2',
+            },
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '중간',
+              emoji: '⭐',
+              color: '#fef3c7',
+            },
+            {
+              id: crypto.randomUUID(),
+              userId: newUser.id,
+              label: '낮음',
+              emoji: '💧',
+              color: '#e0f2fe',
+            },
+          ],
+        });
+
+        return newUser;
       });
     }
 
@@ -128,43 +204,66 @@ export class AuthService {
 
   /** Refresh Token Rotation */
   async refresh(oldRefreshToken: string) {
-    // 1. JWT 서명·만료 검증 — 실패 원인을 분리해서 잡기
+    console.log('========== AuthService.refresh ==========');
+
     let payload: { sub: string; email: string };
+
     try {
-      payload = this.jwtService.verify<{ sub: string; email: string }>(
-        oldRefreshToken,
-        { secret: process.env.JWT_REFRESH_SECRET },
-      );
-    } catch {
-      throw new UnauthorizedException(
-        '만료되었거나 유효하지 않은 토큰입니다. 다시 로그인하세요.',
-      );
+      payload = this.jwtService.verify(oldRefreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET,
+      });
+
+      console.log('✅ JWT verify 성공');
+      console.log(payload);
+    } catch (e) {
+      console.log('❌ JWT verify 실패');
+      console.log(e);
+
+      throw new UnauthorizedException('만료되었거나 유효하지 않은 토큰입니다.');
     }
 
-    // 2. Redis에서 저장된 해시 조회
-    const storedHash = await this.redis.get(`refreshToken:${payload.sub}`);
+    const redisKey = `refreshToken:${payload.sub}`;
+
+    console.log('Redis Key:', redisKey);
+
+    const storedHash = await this.redis.get(redisKey);
+
+    console.log('storedHash:', storedHash);
+
     if (!storedHash) {
-      throw new UnauthorizedException(
-        '세션이 만료되었습니다. 다시 로그인하세요.',
-      );
+      console.log('❌ Redis에 RefreshToken 없음');
+
+      throw new UnauthorizedException('세션이 만료되었습니다.');
     }
 
-    // 3. 해시 비교 — 불일치 시 탈취 의심으로 세션 전체 무효화
-    if (this.hashToken(oldRefreshToken) !== storedHash) {
-      await this.redis.del(`refreshToken:${payload.sub}`);
-      throw new UnauthorizedException(
-        '비정상적인 접근이 감지되어 로그아웃 처리되었습니다.',
-      );
+    const currentHash = this.hashToken(oldRefreshToken);
+
+    console.log('현재 토큰 hash:', currentHash);
+    console.log('Redis hash:', storedHash);
+
+    if (currentHash !== storedHash) {
+      console.log('❌ Hash 불일치');
+
+      await this.redis.del(redisKey);
+
+      throw new UnauthorizedException('토큰이 일치하지 않습니다.');
     }
 
-    // 4. Rotation: 새 토큰 쌍 발급 + Redis 갱신
+    console.log('✅ Refresh 검증 성공');
+
     const { accessToken, refreshToken: newRefreshToken } = this.issueTokens({
       sub: payload.sub,
       email: payload.email,
     });
+
     await this.persistRefreshToken(payload.sub, newRefreshToken);
 
-    return { accessToken, newRefreshToken };
+    console.log('✅ 새 RefreshToken 저장 완료');
+
+    return {
+      accessToken,
+      newRefreshToken,
+    };
   }
 
   async logout(userId: string): Promise<void> {
@@ -182,6 +281,8 @@ export class AuthService {
         id: true,
         email: true,
         provider: true,
+        categories: true,
+        priorityOptions: true,
       },
     });
 
@@ -203,6 +304,8 @@ export class AuthService {
       nickname, // 프론트에서 닉네임으로 사용
       avatarText, // 프론트에서 동그란 프로필 사진 텍스트로 사용
       subscription: 'free', // 향후 결제 시스템 연동 시 활용할 플랜 정보
+      categories: user.categories, // 🌟 프론트로 넘겨줌
+      priorityOptions: user.priorityOptions, // 🌟 프론트로 넘겨줌
     };
   }
 }
