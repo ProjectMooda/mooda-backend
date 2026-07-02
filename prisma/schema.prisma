@@ -77,11 +77,12 @@ model Schedule {
   
   subtasks        Json?           
 
-  // ✅ OCC 및 오프라인 동기화 필드
-  version         Int             @default(1)
   deletedAt       DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+
+  // ✅ Pull 동기화 성능 최적화용 인덱스
+  @@index([userId, updatedAt])
 }
 
 model Goal {
@@ -97,11 +98,12 @@ model Goal {
   milestones      Milestone[]
   schedules       Schedule[]
 
-  // ✅ OCC 및 오프라인 동기화 필드
-  version         Int             @default(1)
+
   deletedAt       DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+
+  @@index([userId, updatedAt])
 }
 
 model Milestone {
@@ -117,11 +119,12 @@ model Milestone {
   
   schedules       Schedule[]
 
-  // ✅ OCC 및 오프라인 동기화 필드
-  version         Int             @default(1)
+
   deletedAt       DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+
+  @@index([userId, updatedAt])
 }
 
 model Category {
@@ -135,6 +138,8 @@ model Category {
 
   deletedAt       DateTime?
   updatedAt       DateTime        @updatedAt
+
+  @@index([userId, updatedAt])
 }
 
 model PriorityOption {
@@ -149,4 +154,6 @@ model PriorityOption {
 
   deletedAt       DateTime?
   updatedAt       DateTime        @updatedAt
+
+  @@index([userId, updatedAt])
 }

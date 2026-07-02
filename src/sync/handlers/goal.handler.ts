@@ -8,7 +8,6 @@ type GoalPayload = {
   endDate?: string | null;
   color?: string;
   isArchived?: boolean;
-  version?: number;
 };
 
 @Injectable()
@@ -25,35 +24,46 @@ export class GoalHandler implements ISyncHandler {
 
     if (action === 'CREATE') {
       const exists = await tx.goal.findUnique({ where: { id: targetId } });
+
       if (!exists) {
         await tx.goal.create({
           data: {
             id: targetId,
             userId,
             ...this.mapPayload(data),
-            version: 1,
           },
         });
       }
     } else if (action === 'UPDATE') {
-      const clientVersion = data.version || 1;
       const result = await tx.goal.updateMany({
-        where: { id: targetId, userId, version: clientVersion },
-        data: { ...this.mapPayload(data), version: { increment: 1 } },
+        where: {
+          id: targetId,
+          userId,
+        },
+        data: this.mapPayload(data),
       });
-      if (result.count === 0)
+
+      if (result.count === 0) {
         this.logger.warn(
-          `[Conflict] Goal ${targetId} 버전문제가 발생해 무시됨.`,
+          `[Update Failed] Goal ${targetId}를 찾을 수 없습니다.`,
         );
+      }
     } else if (action === 'DELETE') {
       const result = await tx.goal.updateMany({
-        where: { id: targetId, userId },
-        data: { deletedAt: new Date(), version: { increment: 1 } },
+        where: {
+          id: targetId,
+          userId,
+        },
+        data: {
+          deletedAt: new Date(),
+        },
       });
-      if (result.count === 0)
+
+      if (result.count === 0) {
         this.logger.warn(
-          `[Delete Conflict] Goal ${targetId} 이미 삭제되었거나 없음.`,
+          `[Delete Failed] Goal ${targetId}를 찾을 수 없습니다.`,
         );
+      }
     }
   }
 

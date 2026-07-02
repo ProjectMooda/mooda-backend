@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { SyncJobDto } from '../dto/sync.dto';
+import type { SyncEntity, SyncJobDto } from '../dto/sync.dto';
 
 export interface SyncSubtask {
   id: number;
@@ -15,5 +15,9 @@ export interface SyncQueuePayload {
 export type PrismaTx = Prisma.TransactionClient;
 
 export interface ISyncHandler {
-  handle(tx: PrismaTx, userId: string, job: SyncJobDto): Promise<void>;
+  handle(
+    tx: PrismaTx,
+    userId: string,
+    job: SyncJobDto,
+  ): Promise<{ entity: SyncEntity; id: string } | void>;
 }

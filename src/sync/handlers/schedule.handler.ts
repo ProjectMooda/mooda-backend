@@ -16,7 +16,6 @@ type SchedulePayload = Omit<
   category?: string;
   priority?: string;
   subtasks?: SyncSubtask[] | null;
-  version?: number;
 };
 
 @Injectable()
@@ -27,7 +26,7 @@ export class ScheduleHandler implements ISyncHandler {
     tx: PrismaTx,
     userId: string,
     syncJob: SyncJobDto,
-  ): Promise<void> {
+  ): Promise<{ entity: 'schedule'; id: string } | void> {
     const { targetId, action, payload } = syncJob;
     const data = payload as SchedulePayload;
 
@@ -35,48 +34,29 @@ export class ScheduleHandler implements ISyncHandler {
       const exists = await tx.schedule.findUnique({ where: { id: targetId } });
       if (!exists) {
         await tx.schedule.create({
-          data: {
-            id: targetId,
-            userId,
-            ...this.mapPayload(data),
-            version: 1, // 초기 버전 세팅
-          },
+          data: { id: targetId, userId, ...this.mapPayload(data) },
         });
+        return { entity: 'schedule', id: targetId };
       }
     } else if (action === 'UPDATE') {
-      const clientVersion = data.version || 1;
-
-      // ✅ Atomic Update (OCC 방어)
-      const result = await tx.schedule.updateMany({
-        where: {
-          id: targetId,
-          userId,
-          version: clientVersion,
-        },
-        data: {
-          ...this.mapPayload(data),
-          version: { increment: 1 },
-        },
-      });
-
-      if (result.count === 0) {
-        this.logger.warn(
-          `[Conflict] Schedule ${targetId} 버전문제가 발생해 업데이트되지 않음. 다음 Pull에서 동기화됨.`,
-        );
-      }
-    } else if (action === 'DELETE') {
-      // ✅ Tombstone (소프트 삭제)
       const result = await tx.schedule.updateMany({
         where: { id: targetId, userId },
-        data: {
-          deletedAt: new Date(),
-          version: { increment: 1 },
-        },
+        data: this.mapPayload(data),
       });
-
+      if (result.count > 0) {
+        return { entity: 'schedule', id: targetId };
+      }
+      this.logger.warn(
+        `[Sync] Schedule ${targetId} 대상 없음 (삭제됨/미존재).`,
+      );
+    } else if (action === 'DELETE') {
+      const result = await tx.schedule.updateMany({
+        where: { id: targetId, userId },
+        data: { deletedAt: new Date() },
+      });
       if (result.count === 0) {
         this.logger.warn(
-          `[Delete Conflict] Schedule ${targetId} 이미 삭제되었거나 없음.`,
+          `[Delete] Schedule ${targetId} 이미 삭제되었거나 없음.`,
         );
       }
     }

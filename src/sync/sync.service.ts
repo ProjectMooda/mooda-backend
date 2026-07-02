@@ -60,23 +60,69 @@ export class SyncService {
 
   // ✅ 구조화된 Pull API (5개 엔티티 전체 긁어오기)
   async pullIncrementalSync(userId: string, since: number) {
-    const sinceDate = new Date(since);
+    const sinceDate = new Date(since || 0);
+    const cursorDate = new Date();
 
     const [schedule, goal, milestone, category, priority] = await Promise.all([
       this.prisma.schedule.findMany({
-        where: { userId, updatedAt: { gt: sinceDate } },
+        where: {
+          userId,
+          updatedAt: {
+            gt: sinceDate,
+            lte: cursorDate,
+          },
+        },
+        orderBy: {
+          updatedAt: 'asc',
+        },
       }),
       this.prisma.goal.findMany({
-        where: { userId, updatedAt: { gt: sinceDate } },
+        where: {
+          userId,
+          updatedAt: {
+            gt: sinceDate,
+            lte: cursorDate,
+          },
+        },
+        orderBy: {
+          updatedAt: 'asc',
+        },
       }),
       this.prisma.milestone.findMany({
-        where: { userId, updatedAt: { gt: sinceDate } },
+        where: {
+          userId,
+          updatedAt: {
+            gt: sinceDate,
+            lte: cursorDate,
+          },
+        },
+        orderBy: {
+          updatedAt: 'asc',
+        },
       }),
       this.prisma.category.findMany({
-        where: { userId, updatedAt: { gt: sinceDate } },
+        where: {
+          userId,
+          updatedAt: {
+            gt: sinceDate,
+            lte: cursorDate,
+          },
+        },
+        orderBy: {
+          updatedAt: 'asc',
+        },
       }),
       this.prisma.priorityOption.findMany({
-        where: { userId, updatedAt: { gt: sinceDate } },
+        where: {
+          userId,
+          updatedAt: {
+            gt: sinceDate,
+            lte: cursorDate,
+          },
+        },
+        orderBy: {
+          updatedAt: 'asc',
+        },
       }),
     ]);
 
@@ -86,7 +132,7 @@ export class SyncService {
       milestone,
       category,
       priority,
-      serverTimestamp: Date.now(), // ✅ 서버 시간
+      serverTimestamp: cursorDate.getTime(),
     };
   }
 }
